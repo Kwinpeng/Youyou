@@ -11,23 +11,28 @@
 /*********************************************************
  * Board Embedding Scheme
  *
- *      +---+
- *    2 |   |
- *  y 1 |   |  ---> bit[9]
- *    0 |   |
- *      +---+
- *       012
  *        x
+ *       012
+ *      +---+
+ *    0 |   |
+ *  y 1 |   |  ---> bit[9] (quanternary)
+ *    2 |   |
+ *      +---+
  *
  *********************************************************/
 
 #define EPT   0
 #define FIL   1
-#define AXE   2
-#define OWE   3
+#define OWE   2
+#define AXE   3
 
 #define QUAN_BASE  4
 
+///////////////////////////////////////////////////////////
+//                 COMMON SUBROUTINES
+//
+//   The following routines are serving as tools.
+//
 void show_board(int board[3][3])
 {
     printf("---------------------\n");
@@ -56,53 +61,13 @@ int quanternary2decimal(int *dat)
     return d;
 }
 
-/***
- * @brief Initialize the value function for the specified
- *
- * @param board: the specified board containing AXE/OWE/EMPTY
- */
-float score(const int board[3][3])
+inline bool triequal(int a, int b, int c, int v)
 {
-    /* horizontal test */
-    for (int i = 0; i < 3; ++i) {
-        int sum = board[i][0] + board[i][1] + board[i][2];
-
-        if (sum == 3 * AXE) {
-            return 1.0f;
-        } else if (sum == 3 * OWE) {
-            return 0.0f;
-        }
+    if (a == b && b == c && c == v) {
+        return true;
+    } else {
+        return false;
     }
-
-    /* vertical test */
-    for (int j = 0; j < 3; ++j) {
-        int sum = board[0][j] + board[1][j] + board[2][j];
-
-        if (sum == 3 * AXE) {
-            return 1.0f;
-        } else if (sum == 3 * OWE) {
-            return 0.0f;
-        }
-    }
-
-    /* diagonal test */
-    int sum = 0;
-
-    sum = board[0][0] + board[1][1] + board[2][2];
-    if (sum == 3 * AXE) {
-        return 1.0f;
-    } else if (sum == 3 * OWE) {
-        return 0.0f;
-    }
-
-    sum = board[0][2] + board[1][1] + board[2][0];
-    if (sum == 3 * AXE) {
-        return 1.0f;
-    } else if (sum == 3 * OWE) {
-        return 0.0f;
-    }
-
-    return 0.5;
 }
 
 void combination(int select, int total, std::list<std::vector<int> >& list)
@@ -116,19 +81,116 @@ void combination(int select, int total, std::list<std::vector<int> >& list)
         std::vector<int> cvec;
         for (int i = 0; i < total; ++i) {
             if (bitmask[i]) {
-                std::cout << " " << i;
                 cvec.push_back(i);
             }
         }
 
-        std::cout << std::endl;
         list.push_back(cvec);
 
     } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
 }
 
+///////////////////////////////////////////////////////////
+//                    TEST SUBROUTINES
+//
+//   Unit test.
+//
+void test_decimal_base()
+{
+    int a[9] = {
+        0, 1, 0,
+        0, 0, 0,
+        0, 0, 0
+    };
+
+    std::cout << "a to decimal base is "
+              << quanternary2decimal(a)
+              << std::endl;
+}
+
+///////////////////////////////////////////////////////////
+//                FUNCTIONAL SUBROUTINES
+//
+//   The following routines implement the main logic of the
+// tic-tac-toe game AI.
+//
+
 /***
- * @brief Score a specific kind of filling-pattern with X/O oblivious.
+ * @brief Initialize the value function for the specified
+ *
+ * @param board: the specified board containing AXE/OWE/EPT
+ */
+float score(const int board[3][3])
+{
+    int win = 0, los = 0;
+
+    /* horizontal test */
+    for (int i = 0; i < 3; ++i) {
+        if (triequal(board[i][0],
+                     board[i][1],
+                     board[i][2],
+                     AXE)) {
+            win++;
+        } else if (triequal(board[i][0],
+                            board[i][1],
+                            board[i][2],
+                            OWE)) {
+            los++;
+        }
+    }
+
+    /* vertical test */
+    for (int j = 0; j < 3; ++j) {
+        if (triequal(board[0][j],
+                     board[1][j],
+                     board[2][j],
+                     AXE)) {
+            win++;
+        } else if (triequal(board[0][j],
+                            board[1][j],
+                            board[2][j],
+                            OWE)) {
+            los++;
+        }
+    }
+
+    /* diagonal test */
+    if (triequal(board[0][0],
+                 board[1][1],
+                 board[2][2],
+                 AXE)) {
+        win++;
+    } else if (triequal(board[0][0],
+                        board[1][1],
+                        board[2][2],
+                        OWE)) {
+        los++;
+    }
+
+    if (triequal(board[0][2],
+                 board[1][1],
+                 board[2][0],
+                 AXE)) {
+        win++;
+    } else if (triequal(board[0][2],
+                        board[1][1],
+                        board[2][0],
+                        OWE)) {
+        los++;
+    }
+
+    /* score based on corse grained evaluatioin */
+    if (los) { return 0.0f;
+    } else {
+        if (win) { return 1.0f;
+        } else { return 0.5f; }
+    }
+
+}
+
+/***
+ * @brief Score a specific kind of filling-pattern with
+ *        X/O oblivious.
  *
  * @param pattern: embeded X/O oblivious filling pattern
  */
@@ -141,8 +203,7 @@ void evaluate(int pattern, std::map<int, float>& vfunc)
     int counter = 0;
     int position[9] = {-1};
 
-    std::cout << "Pattern: " << pattern
-              << " being parsed.." << std::endl;
+    std::cout << "Pattern : " << pattern << std::endl;
 
     int *pb = static_cast<int*>(&board[0][0]);
     std::cout << "Position: ";
@@ -185,7 +246,7 @@ void evaluate(int pattern, std::map<int, float>& vfunc)
             }
 
             /* update ones according to combination */
-            std::cout << "The chosen ones as X are in position ";
+            std::cout << "The chosen combinations (as X) are: ";
             for (auto itr2 : itr1) {
                 std::cout << itr2 << " ";
 
@@ -197,6 +258,8 @@ void evaluate(int pattern, std::map<int, float>& vfunc)
 
             /* score this pattern and store in value func */
             float s = score(reinterpret_cast<int(*)[3]>(tmp));
+
+            std::cout << "\t\tScore: " << s << std::endl;
 
             /* snapshot this board status and treat it as 3-based
              * representation, then convert to decimal */
@@ -232,19 +295,6 @@ void init_value_function(std::map<int, float>& vfunc)
         evaluate(e, vfunc);
     }
 
-}
-
-void test_decimal_base()
-{
-    int a[9] = {
-        0, 1, 0,
-        0, 0, 0,
-        0, 0, 0
-    };
-
-    std::cout << "a to decimal base is "
-              << quanternary2decimal(a)
-              << std::endl;
 }
 
 int main(int argc, const char *argv[])
