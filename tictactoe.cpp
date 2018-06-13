@@ -4,6 +4,7 @@
 #include <list>
 #include <map>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -23,9 +24,22 @@
 #define EPT   0
 #define FIL   1
 #define AXE   2
-#define ZRO   3
+#define OWE   3
 
-int decimal_base(int *dat)
+#define QUAN_BASE  4
+
+void show_board(int board[3][3])
+{
+    printf("---------------------\n");
+    printf("\t   0  1  2\n");
+    for (int i = 0; i < 3; ++i) {
+        printf("\t%d: %d, %d, %d\n",
+                i, board[i][0], board[i][1], board[i][2]);
+    }
+    printf("---------------------\n");
+}
+
+int quanternary2decimal(int *dat)
 {
     int d = 0, base = 0;
 
@@ -33,7 +47,7 @@ int decimal_base(int *dat)
         if (i == 0) {
             base = 1;
         } else {
-            base *= 3;
+            base *= QUAN_BASE;
         }
 
         d += dat[i] * base;
@@ -45,7 +59,7 @@ int decimal_base(int *dat)
 /***
  * @brief Initialize the value function for the specified
  *
- * @param board: the specified board containing AXE/ZRO/EMPTY
+ * @param board: the specified board containing AXE/OWE/EMPTY
  */
 float score(const int board[3][3])
 {
@@ -55,7 +69,7 @@ float score(const int board[3][3])
 
         if (sum == 3 * AXE) {
             return 1.0f;
-        } else if (sum == 3 * ZRO) {
+        } else if (sum == 3 * OWE) {
             return 0.0f;
         }
     }
@@ -66,7 +80,7 @@ float score(const int board[3][3])
 
         if (sum == 3 * AXE) {
             return 1.0f;
-        } else if (sum == 3 * ZRO) {
+        } else if (sum == 3 * OWE) {
             return 0.0f;
         }
     }
@@ -77,14 +91,14 @@ float score(const int board[3][3])
     sum = board[0][0] + board[1][1] + board[2][2];
     if (sum == 3 * AXE) {
         return 1.0f;
-    } else if (sum == 3 * ZRO) {
+    } else if (sum == 3 * OWE) {
         return 0.0f;
     }
 
     sum = board[0][2] + board[1][1] + board[2][0];
     if (sum == 3 * AXE) {
         return 1.0f;
-    } else if (sum == 3 * ZRO) {
+    } else if (sum == 3 * OWE) {
         return 0.0f;
     }
 
@@ -102,56 +116,64 @@ void combination(int select, int total, std::list<std::vector<int> >& list)
         std::vector<int> cvec;
         for (int i = 0; i < total; ++i) {
             if (bitmask[i]) {
-                //std::cout << " " << i;
+                std::cout << " " << i;
                 cvec.push_back(i);
             }
         }
 
-        //std::cout << std::endl;
+        std::cout << std::endl;
         list.push_back(cvec);
 
     } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
 }
 
 /***
- * @brief Score a specific kind of filling-scheme with X/O oblivious.
+ * @brief Score a specific kind of filling-pattern with X/O oblivious.
  *
- * @param scheme: embeded X/O oblivious filling scheme
+ * @param pattern: embeded X/O oblivious filling pattern
  */
-void evaluate(int scheme, std::map<int, float>& vfunc)
+void evaluate(int pattern, std::map<int, float>& vfunc)
 {
     /* convert embeded scheme to 2D scheme */
-    int board[3][3] = {EPT}, tmp[9] = {EPT};
+    int board[3][3] = {{EPT}}, tmp[9] = {EPT};
 
+    /* record filling position */
     int counter = 0;
     int position[9] = {-1};
+
+    std::cout << "Pattern: " << pattern
+              << " being parsed.." << std::endl;
+
     int *pb = static_cast<int*>(&board[0][0]);
+    std::cout << "Position: ";
     for (int i = 0; i < 9; ++i) {
-        pb[i] = (0x1)&(scheme>>i);
+        pb[i] = (0x1)&(pattern>>i);
 
         if (pb[i] == 1) {
             position[counter++] = i;
-            std::cout << "i: " << i << std::endl;
+            std::cout << i << " ";
         }
     }
-    std::cout << "scheme parsed done.." << std::endl;
+    std::cout << std::endl;
 
     std::vector<int> select;
     select.push_back(counter / 2);
-    if (counter % 2) {
+    if (counter > 2 && counter % 2) {
         select.push_back(counter - counter / 2);
     }
 
     while (!select.empty()) {
+        /* for each filling pattern */
         int nselect = select.back();
         select.pop_back();
 
-        /* enumerate the selecting nselect of counter */
         std::list<std::vector<int> > scheme_list;
 
+        /* enumerate all the possible scheme of this filling-
+         * pattern */
         combination(nselect, counter, scheme_list);
 
-        /* convert to 2D board for each scheme */
+        /* convert to 2D board for each combination scheme */
         for (auto itr1 : scheme_list) {
             /* copy the filling pattern for each possible 
              * combination */
@@ -159,43 +181,55 @@ void evaluate(int scheme, std::map<int, float>& vfunc)
 
             /* set position with the chosen default value */
             for (int i = 0; i < counter; ++i) {
-                tmp[i] = ZRO;
+                tmp[position[i]] = OWE;
             }
 
             /* update ones according to combination */
+            std::cout << "The chosen ones as X are in position ";
             for (auto itr2 : itr1) {
                 std::cout << itr2 << " ";
 
-                tmp[itr2] = AXE;
+                tmp[position[itr2]] = AXE;
             }
             std::cout << std::endl;
+
+            show_board(reinterpret_cast<int(*)[3]>(tmp));
 
             /* score this pattern and store in value func */
             float s = score(reinterpret_cast<int(*)[3]>(tmp));
 
             /* snapshot this board status and treat it as 3-based
              * representation, then convert to decimal */
-            int decimal = decimal_base(tmp);
-        }
+            int d = quanternary2decimal(tmp);
 
+            /* update the corresponding item in value function */
+            std::pair<std::map<int, float>::iterator, bool> res =
+                vfunc.insert(std::make_pair(d, s));
 
-    }
+            if (!res.second)
+                std::cout << "Warning: the key already exist!" << std::endl;
+
+        } // end for
+
+    } // end while
 
 }
 
-void generate_value_function(std::map<int, float>& vfunc)
+void init_value_function(std::map<int, float>& vfunc)
 {
     vfunc.clear();
 
     const int nscheme = 512; // 2^(3*3)
 
-    /* Traverse each filling pattern
+    /* Traverse each filling pattern and initialize all the
+     * schemes of that pattern.
      *
      * NOTE that a single filling pattern is not corresponding
-     * to a single tic-tac-toe permutation, since the board may
-     * contain empty point. */
-    for (int i = 0; i < nscheme; ++i) {
-        ;
+     * to a single tic-tac-toe board situation, which called
+     * scheme in our convention, since the board may contain
+     * empty point and each fill point maybe an X or O. */
+    for (int e = 0; e < nscheme; ++e) {
+        evaluate(e, vfunc);
     }
 
 }
@@ -209,7 +243,7 @@ void test_decimal_base()
     };
 
     std::cout << "a to decimal base is "
-              << decimal_base(a)
+              << quanternary2decimal(a)
               << std::endl;
 }
 
@@ -217,8 +251,8 @@ int main(int argc, const char *argv[])
 {
     /* Global data structures */
     std::map<int, float> value_function;
-    
-    //evaluate(atoi(argv[1]), value_function);
+
+    init_value_function(value_function);
 
     return 0;
 }

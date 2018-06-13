@@ -1,2 +1,7 @@
+FLAGS = -std=c++11 \
+		-Wall -Wno-uninitialized \
+		      -Wno-deprecated-declarations \
+			  -Wsign-compare
+
 game: tictactoe.cpp
-	g++ -std=c++11 tictactoe.cpp -o game
+	g++ $(FLAGS) tictactoe.cpp -o game
