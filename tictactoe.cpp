@@ -26,14 +26,31 @@
 #define OWE   2
 #define AXE   3
 
-#define QUAN_BASE  4
+#define STA_ING     0
+#define STA_WIN     1
+#define STA_LOS     2
+#define STA_DRW     3
+
+#define QUAN_BASE   4
+
+#define FATAL_CHECK(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            fprintf(stderr, "Fatal error: %s (at %s:%d)\n", \
+                msg, __FILE__, __LINE__); \
+            fprintf(stderr, "*** FAILED - ABORTING\n"); \
+            exit(-1); \
+        } \
+    } while(0)
+
+const float alpha = 0.2;
 
 ///////////////////////////////////////////////////////////
 //                 COMMON SUBROUTINES
 //
 //   The following routines are serving as tools.
 //
-void show_board(int board[3][3])
+void show_board(const int board[3][3])
 {
     printf("---------------------\n");
     printf("\t   0  1  2\n");
@@ -44,7 +61,7 @@ void show_board(int board[3][3])
     printf("---------------------\n");
 }
 
-int quanternary2decimal(int *dat)
+int quanternary2decimal(const int *dat)
 {
     int d = 0, base = 0;
 
@@ -74,6 +91,12 @@ void combination(int select, int total, std::list<std::vector<int> >& list)
 {
     list.clear();
 
+    if (select == 0) {
+        std::vector<int> cvec;
+        list.push_back(cvec);
+        return ;
+    }
+
     std::vector<int> bitmask(select, 1);
     bitmask.resize(total, 0);
 
@@ -88,6 +111,19 @@ void combination(int select, int total, std::list<std::vector<int> >& list)
         list.push_back(cvec);
 
     } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+}
+
+inline bool check_move(int row, int col, const int board[3][3])
+{
+    bool ret = true;
+
+    if (row < 0 || row > 2 || col < 0 || col > 2)
+        ret = false;
+
+    if (board[row][col] != EPT)
+        ret = false;
+
+    return ret;
 }
 
 ///////////////////////////////////////////////////////////
@@ -219,7 +255,7 @@ void evaluate(int pattern, std::map<int, float>& vfunc)
 
     std::vector<int> select;
     select.push_back(counter / 2);
-    if (counter > 2 && counter % 2) {
+    if (counter % 2) {
         select.push_back(counter - counter / 2);
     }
 
@@ -297,12 +333,148 @@ void init_value_function(std::map<int, float>& vfunc)
 
 }
 
+/***
+ * @brief ..
+ *
+ * @param ..
+ */
+std::pair<int, int> Youyou(std::map<int, float>& vfunc,
+                           const int board[3][3])
+{
+    typedef std::vector<std::pair<std::pair<int, int>, float> > CList;
+
+    /* locate the current states in value function table */
+    std::map<int, float>::iterator cur_itr = vfunc.find(
+            quanternary2decimal(reinterpret_cast<const int*>(board)));
+    FATAL_CHECK(cur_itr != vfunc.end(), "non-exist scheme");
+
+    /* record all the possible move and the corresponding score */
+    CList candidate_list;
+
+    int test_board[3][3] = {{EPT}};
+    memcpy(test_board, board, sizeof(int) * 9);
+
+    /* traverse all the possible moves and lookup the win
+     * probability from value faunciton table. */
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            if (board[i][j] == EPT) {
+                /* try this position and check the probability */
+                test_board[i][j] = AXE;
+
+                int status = quanternary2decimal(
+                        reinterpret_cast<const int*>(test_board));
+
+                std::map<int, float>::iterator itr = vfunc.find(status);
+                FATAL_CHECK(itr != vfunc.end(), "non-exist scheme");
+
+                candidate_list.push_back(std::make_pair(std::make_pair(i, j),
+                                                        itr->second));
+                /* reset */
+                test_board[i][j] = EPT;
+            }
+        }
+    }
+
+    FATAL_CHECK(candidate_list.size() > 0, "empty candidate list");
+
+    /* choose the one has the highest win probability */
+    CList::iterator highest_itr = candidate_list.begin();
+    for (CList::iterator itr = candidate_list.begin();
+         itr != candidate_list.end(); ++itr) {
+        if (itr->second > highest_itr->second) {
+            highest_itr = itr;
+        }
+    }
+
+    int row = highest_itr->first.first;
+    int col = highest_itr->first.second;
+
+    /* update the value function */
+    float v = cur_itr->second;
+
+    v = v + alpha * (highest_itr->second - v);
+
+    cur_itr->second = v;
+
+    return std::make_pair(row, col);
+}
+
+/***
+ * @brief ..
+ * @param ..
+ */
+void play(std::map<int, float>& vfunc)
+{
+    int board[3][3] = {{EPT}};
+
+    int situation = STA_ING;
+
+    int round = 1;
+
+    int row, col;
+
+    while (situation == STA_ING) {
+        /* round prompt */
+        std::cout << "Round " << round << ":" << std::endl;
+
+        show_board(board);
+
+        /* Human player takes its turn */
+        do {
+            std::cout << "Please enter your choice: ";
+
+            std::cin >> row >> col;
+
+        } while(!check_move(row, col, board));
+
+        std::cout << " (row, col) = " << "(" << row << ", " << col << ")"
+                  << std::endl;
+
+        board[row][col] = OWE;
+
+        show_board(board);
+
+        printf("before youyou\n");
+        /* Youyou takes its turn */
+        std::pair<int, int> point = Youyou(vfunc, board);
+        printf("after youyou\n");
+
+        row = point.first;
+        col = point.second;
+        
+        FATAL_CHECK(check_move(row, col, board), "Youyou made an invalid choice");
+
+        board[row][col] = AXE;
+
+        std::cout << "Youyou made a move: "
+                  << " (row, col) = " << "(" << row << ", " << col << ")"
+                  << std::endl;
+
+        show_board(board);
+
+        /* update situation by score */
+        float s = score(board);
+        if (s > 0.999) {
+            situation = STA_WIN;
+            std::cout << "Lose" << std::endl;
+        } else if (s < 0.001) {
+            situation = STA_LOS;
+            std::cout << "Win" << std::endl;
+        }
+
+        round++;
+    }
+}
+
 int main(int argc, const char *argv[])
 {
     /* Global data structures */
     std::map<int, float> value_function;
 
     init_value_function(value_function);
+
+    play(value_function);
 
     return 0;
 }
