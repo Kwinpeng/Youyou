@@ -435,10 +435,8 @@ void play(std::map<int, float>& vfunc)
 
         show_board(board);
 
-        printf("before youyou\n");
         /* Youyou takes its turn */
         std::pair<int, int> point = Youyou(vfunc, board);
-        printf("after youyou\n");
 
         row = point.first;
         col = point.second;
