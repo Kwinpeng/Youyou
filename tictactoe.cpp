@@ -3,10 +3,15 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <chrono>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /*********************************************************
  * Board Embedding Scheme
@@ -124,6 +129,95 @@ inline bool check_move(int row, int col, const int board[3][3])
         ret = false;
 
     return ret;
+}
+
+bool persistence(std::map<int, float>& vfunc)
+{
+    std::string dir("db/");
+
+    /* get timestamp */
+    std::time_t now = std::chrono::system_clock::to_time_t(
+                                 std::chrono::system_clock::now());
+
+    char date[32] = {0}, time[32] = {0};
+    std::strftime(date, sizeof(date), "%Y-%m%d", std::localtime(&now));
+    std::strftime(time, sizeof(time), "%H_%M_%S", std::localtime(&now));
+
+    std::cout << "date: " << date
+              << " time: " << time << std::endl;
+
+    std::string sdir = dir + std::string(date);
+    std::string fn = sdir + std::string(time) + ".dat";
+
+    /* check subdirectory first */
+    struct stat sd;
+    if (stat(sdir.c_str(), &sd) == 0 ) {
+        if (!S_ISDIR(sd.st_mode)) {
+            std::cout << "Error: file " << sdir
+                      << "exists but not a directory." << std::endl;
+            return false;
+        }
+    } else {
+        if(mkdir(sdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH))
+            std::cout << "Error: directory " << sdir
+                      << " creation falied." << std::endl;
+        return false;
+    }
+
+    FILE *fp = fopen(fn.c_str(), "w");
+    if (fp == NULL) {
+        std::cout << "Error: file " << fn << " open error." << std::endl;
+        return false;
+    }
+
+    for (auto itr : vfunc) {
+        fprintf(fp, "scheme key: %09d, score value: %5.4f\n",
+                itr.first, itr.second);
+    }
+    fclose(fp);
+
+    return true;
+}
+
+bool save(std::map<int, float>& vfunc, const char *vft)
+{
+    FILE *fp = fopen(vft, "wb");
+    if (fp == NULL) {
+        std::cout << "Error: file vfuncTable.db open error." << std::endl;
+        return false;
+    } else {
+        int count = vfunc.size();
+        fwrite(&count, sizeof(int), 1, fp);
+        for (auto itr : vfunc) {
+            fwrite(&itr.first, sizeof(int), 1, fp);
+            fwrite(&itr.second, sizeof(float), 1, fp);
+        }
+        fclose(fp);
+    }
+
+    return true;
+}
+
+bool read(std::map<int, float>& vfunc, const char *vft)
+{
+    FILE *fp = fopen(vft, "rb");
+    if (fp == NULL) {
+        std::cout << "Error: file vfuncTable.db open error." << std::endl;
+        return false;
+    } else {
+        int key, count;
+        float value;
+
+        fread(&count, sizeof(int), 1, fp);
+        for (int i = 0; i < count; ++i) {
+            fread(&key, sizeof(int), 1, fp);
+            fread(&value, sizeof(float), 1, fp);
+            vfunc.insert(std::make_pair(key, value));
+        }
+        fclose(fp);
+    }
+
+    return true;
 }
 
 ///////////////////////////////////////////////////////////
@@ -314,23 +408,38 @@ void evaluate(int pattern, std::map<int, float>& vfunc)
 
 }
 
-void init_value_function(std::map<int, float>& vfunc)
+/***
+ * @brief Initialize the value function, if there is no previous learning
+ *        file stored, then init through traverse the whole board scheme;
+ *        else read from the file.
+ * 
+ * @param vfunc: function table
+ *        vft: file name
+ * */
+void init_value_function(std::map<int, float>& vfunc,
+                         const char *vft)
 {
     vfunc.clear();
 
-    const int nscheme = 512; // 2^(3*3)
+    struct stat sd;
+    if (stat(vft, &sd) == 0 ) {
+        if (S_ISREG(sd.st_mode)) {
+            read(vfunc, vft);
+        }
+    } else {
+        const int nscheme = 512; // 2^(3*3)
 
-    /* Traverse each filling pattern and initialize all the
-     * schemes of that pattern.
-     *
-     * NOTE that a single filling pattern is not corresponding
-     * to a single tic-tac-toe board situation, which called
-     * scheme in our convention, since the board may contain
-     * empty point and each fill point maybe an X or O. */
-    for (int e = 0; e < nscheme; ++e) {
-        evaluate(e, vfunc);
+        /* Traverse each filling pattern and initialize all the
+         * schemes of that pattern.
+         *
+         * NOTE that a single filling pattern is not corresponding
+         * to a single tic-tac-toe board situation, which called
+         * scheme in our convention, since the board may contain
+         * empty point and each fill point maybe an X or O. */
+        for (int e = 0; e < nscheme; ++e) {
+            evaluate(e, vfunc);
+        }
     }
-
 }
 
 /***
@@ -453,10 +562,10 @@ void play(std::map<int, float>& vfunc)
 
         /* update situation by score */
         float s = score(board);
-        if (s > 0.999) {
+        if (s > 0.99999) {
             situation = STA_WIN;
             std::cout << "Lose" << std::endl;
-        } else if (s < 0.001) {
+        } else if (s < 0.00001) {
             situation = STA_LOS;
             std::cout << "Win" << std::endl;
         }
@@ -470,9 +579,11 @@ int main(int argc, const char *argv[])
     /* Global data structures */
     std::map<int, float> value_function;
 
-    init_value_function(value_function);
+    init_value_function(value_function, "db/vfuncTable.db");
 
     play(value_function);
+
+    save(value_function, "db/vfuncTable.db");
 
     return 0;
 }
