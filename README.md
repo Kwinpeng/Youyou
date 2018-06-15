@@ -1,3 +1,3 @@
 # Youyou: A tic-tac-toe game AI
 
-![Youyou](pics/youyou.jpg?raw=true "Youyou")
+<img src="pics/youyou.jpg" width="96">
